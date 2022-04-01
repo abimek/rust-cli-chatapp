@@ -1,9 +1,27 @@
 
 use std::net::{SocketAddr, TcpListener, TcpStream};
 
+//USER CODE
+use std::net::{TcpStream}
+
+struct User {
+    username: String,
+    stream: TcpStream
+}
+
+
+impl User {
+
+    fn new(stream: TcpStream) -> Self {
+
+    }        
+}
+    
+
+//SERVER CODE
 struct Server {
     users: Vec<User>,
-    channels: Vec<Channel> 
+    channels: Vec<User>
 }
 
 impl Server {
@@ -36,8 +54,6 @@ async fn main(){
 
 }
 
-
-
 async fn handle_client(stream: TcpStream, server: &mut Server) {
-    server.addUser(User::)
+    server.addUser()
 }
