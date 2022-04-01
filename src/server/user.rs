@@ -1,14 +1,15 @@
-pub mod User {
-    
-    struct User {
-        username: String    
-    }
+use std::net::{TcpStream}
+
+struct User {
+    username: String,
+    stream: TcpStream
+}
 
 
 impl User {
 
-    fn new(name: String){
-
-    }
-    
+    fn new(stream: TcpStream) -> Self {
+        
+    }        
 }
+    
