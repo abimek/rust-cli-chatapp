@@ -25,7 +25,7 @@ impl User {
     
     async fn handle_packets(&self){
         loop {
-
+            self.stream.read_exact();
         }
     }
 }
