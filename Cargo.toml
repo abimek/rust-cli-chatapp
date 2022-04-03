@@ -10,3 +10,10 @@ tokio = { version = "1.17.0", features = ["full"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 
+
+[[bin]]
+name = "server"
+
+[lib]
+name = "packets"
+path = "src/packets/lib.rs"

@@ -1,10 +1,9 @@
 use std::net::{SocketAddr, TcpListener, TcpStream};
 use std::collections::HashMap;
+use std::io::Read;
+use byte_array::ByteArray;
 
-//USER CODE
-use std::net::{TcpStream}
-
-struct User<String> {
+struct User {
     identifier: i32,
     username: String,
     stream: TcpStream,
@@ -15,17 +14,24 @@ impl User {
 
     fn new(id: i32, tcp_stream: TcpStream) -> Self {
         //TODO Read the Username from Stream
+        let username = String::from("bob");
         User{
             identifier: id,
-            username, 
+            username,
             stream: tcp_stream,
-            channels: Vec::new();
+            channels: Vec::new(),
         }
     }
     
-    async fn handle_packets(&self){
+    async fn handle_packets(&mut self){
+        let mut data;
         loop {
-            self.stream.read_exact();
+            data = [0;4];
+            self.stream.read_exact(&data).expect("Error reading packet, server shutting down...");
+            let bytes_to_read = i32::from_be_bytes(data.clone());
+            self.stream.read_exact(&next_data).expect("Error reading packet, server shutting down...");
+
+
         }
     }
 }
@@ -45,8 +51,8 @@ impl Channel {
         }
     }
 
-    fn add_user(identifier: i32){
-        users.push(identifier);
+    fn add_user(&mut self, identifier: i32){
+        self.users.push(identifier);
     }
 
 }
@@ -64,34 +70,34 @@ impl Server {
         Server {
             users: Vec::new(),
             channels: HashMap::new(),
-            usercount: 0       
+            usercount: 0
         }
     }
 
-    fn addChannel(&self, channel: Channel){
-        self.channels.insert(channel.identifier, channel);
+    fn add_channel(&mut self, channel: Channel){
+        self.channels.insert(channel.identifier.clone(), channel);
     }
 
-    fn increment_user_count(&self) -> i32 {
-        self.usercount++;
-        self.usercount.clone();
+    fn increment_user_count(&mut self) -> i32 {
+        self.usercount = self.usercount+1;
+        self.usercount.clone()
     }
 
-    fn addUser(&self, user: User){
+    fn add_user(&mut self, user: User){
         self.users.push(user);
     }
 }
 
 #[tokio::main]
 async fn main(){
-    let listener = TcpListener::bind("0.0.0.0:3050").expect("Failure while binding to port 3050") 
+    let listener = TcpListener::bind("0.0.0.0:3050").expect("Failure while binding to port 3050");
 
     let mut server = Server::new();
 
     loop {
-        let (socket, _) = listener.accept().await.unwrap();
+        let (socket, _) = listener.accept().unwrap();
         let userid = server.increment_user_count();
-        handle_client(tcp_stream, server, userid);
+        handle_client(socket, &mut server, userid);
     }
 
 }
@@ -99,6 +105,6 @@ async fn main(){
 async fn handle_client(stream: TcpStream, server: &mut Server, userid: i32) {
     let mut user = User::new(userid, stream);
     user.handle_packets();
-    server.addUser(user);
+    server.add_user(user);
 }
 
