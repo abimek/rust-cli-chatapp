@@ -20,7 +20,7 @@ impl User {
         }
     }
     
-    async fn handle_packets(&mut self, server: &mut Server) {
+    fn handle_packets(&mut self, server: &mut Server) {
         loop {
             let mut data = [0;4];
             self.stream.read_exact(&mut data).expect("Error reading packet, server shutting down...");
@@ -65,15 +65,13 @@ impl Server {
 
 #[tokio::main]
 async fn main(){
-    let listener = TcpListener::bind("0.0.0.0:3050").expect("Failure while binding to port 3050");
+    let listener = TcpListener::bind("0.0.0.0:3051").expect("Failure while binding to port 3051");
 
     let mut server = Server::new();
 
-    loop {
-        let (socket, _) = listener.accept().unwrap();
-        handle_client(socket, &mut server);
+    for stream in listener.incoming() {
+        handle_client(stream.unwrap(), &mut server);
     }
-
 }
 
 async fn handle_client(stream: TcpStream, server: &mut Server) {
