@@ -4,18 +4,19 @@ use serde_json::to_string;
 use serde_json::Result;
 
 #[derive(Serialize, Deserialize)]
-struct MessageSendPacket {
-    id: i32,
+pub struct MessageSendPacket {
+    sender: String,
     message: String
 }
 
 impl MessageSendPacket {
 
-    fn from_string(data: &str) -> Result<String> {
-        from_str(data)
+    pub fn from_string(data: &str) -> Result<MessageSendPacket> {
+        let mut p: Result<MessageSendPacket> = from_str(data);
+        p
     }
 
-    fn to_string(&self) -> Result<String> {
+    pub fn to_string(&self) -> Result<String> {
         to_string(&self)
     }
 }
