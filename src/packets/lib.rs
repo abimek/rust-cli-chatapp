@@ -1,75 +1,103 @@
 use serde::{Deserialize, Serialize};
-use tokio::{io::{BufWriter, BufReader, AsyncBufReadExt, AsyncReadExt}, net::{TcpStream, tcp::{OwnedWriteHalf, OwnedReadHalf}}};
+use tokio::{
+    io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader, BufWriter},
+    net::{
+        tcp::{OwnedReadHalf, OwnedWriteHalf},
+        TcpStream,
+    },
+};
 
 type Result<T> = std::result::Result<T, Error>;
 
 enum Error {
+    SerdeError(serde_json::Error),
     PacketError(PacketErrorType),
     ReadDataError(ReadDataErrorType),
 }
 
 enum ReadDataErrorType {
-    FailedPacketIdRead
+    FailedPacketIdRead,
 }
 
 enum PacketErrorType {
-     NoneExistantPacketId,
-     PacketConstructionFail
+    NoneExistantPacketId,
+    PacketConstructionFail,
 }
 
 pub struct Connection {
     writer: BufWriter<OwnedWriteHalf>,
-    reader: BufReader<OwnedReadHalf>
+    reader: BufReader<OwnedReadHalf>,
 }
 
 impl Connection {
     pub fn new(stream: TcpStream) -> Self {
-
         let (mut read, mut write) = stream.into_split();
         Connection {
-            writer: BufWriter<write>,
-            reader: BufReader<read>
+            writer: BufWriter::new(write),
+            reader: BufReader::new(read),
+        }
+    }
+    async fn write_packet<T: Packet>(&mut self, packet: T) -> Result<()> {
+        match packet.to_string() {
+            Ok(mut packet_data) => {
+                let packet_id = packet.get_identifier();
+                if let Some(id) = PacketId::to_u64(packet_id) {
+                    packet_data.push_str("\n");
+                    let bytes = packet_data.as_bytes();
+                    self.writer.write_all(&id.to_ne_bytes()).await.unwrap();
+                    self.writer.write_all(bytes).await.unwrap();
+                    self.writer.flush().await.unwrap();
+                    ()
+                }
+                Err(Error::PacketError(PacketErrorType::NoneExistantPacketId))
+            }
+            Err(e) => Err(Error::SerdeError(e)),
         }
     }
 
-    async fn read_data(&mut self) -> Result<Box<dyn Packet>> {
+    async fn read_packet(&mut self) -> Result<Box<dyn Packet>> {
         match self.reader.read_u64().await {
-            Ok(id) => {
-                match PacketId::from_u64(id) {
-                    Some(packet) => {
-                        let mut data = String::new();
-                        self.reader.read_line(&mut data);
-                        match packet {
-                            PacketId::MessageSend => {
-                                if let Ok(pk) = MessageSendPacket::from_string(&data) {
-                                    return Ok(Box::new(pk))
-                                }
-                                return Err(Error::PacketError(PacketErrorType::PacketConstructionFail));
-                            },
-                            _ => Err(Error::PacketError(PacketErrorType::NoneExistantPacketId))
-                        } 
-                    },
-                    None => return Err(Error::PacketError(PacketErrorType::NoneExistantPacketId))
+            Ok(id) => match PacketId::from_u64(id) {
+                Some(packet) => {
+                    let mut data = String::new();
+                    self.reader.read_line(&mut data).await.unwrap();
+                    match packet {
+                        PacketId::MessageSend => {
+                            if let Ok(pk) = MessageSendPacket::from_string(&data) {
+                                return Ok(Box::new(pk));
+                            }
+                            return Err(Error::PacketError(
+                                PacketErrorType::PacketConstructionFail,
+                            ));
+                        }
+                    }
                 }
+                None => return Err(Error::PacketError(PacketErrorType::NoneExistantPacketId)),
             },
             std::result::Result::Err(n) => {
                 return Err(Error::ReadDataError(ReadDataErrorType::FailedPacketIdRead));
-            } 
+            }
         }
     }
 }
 
 pub enum PacketId {
-    MessageSend
+    MessageSend,
 }
 
 impl PacketId {
-   pub fn from_u64(int: u64) -> Option<PacketId> {
+    pub fn from_u64(int: u64) -> Option<PacketId> {
         match int {
             0 => Some(PacketId::MessageSend),
-            _ => None
+            _ => None,
         }
-   } 
+    }
+
+    pub fn to_u64(packet: PacketId) -> Option<u64> {
+        match packet {
+            PacketId::MessageSend => Some(0),
+        }
+    }
 }
 
 pub trait Packet {
@@ -82,6 +110,10 @@ pub trait Packet {
         Self: Sized;
 
     fn get_id() -> PacketId
+    where
+        Self: Sized;
+
+    fn get_identifier(&self) -> PacketId
     where
         Self: Sized;
 }
@@ -100,6 +132,10 @@ impl Packet for MessageSendPacket {
 
     fn to_string(&self) -> serde_json::Result<String> {
         serde_json::to_string(&self)
+    }
+
+    fn get_identifier(&self) -> PacketId {
+        PacketId::MessageSend
     }
 
     fn get_id() -> PacketId {
