@@ -1,82 +1,52 @@
-use std::net::{SocketAddr, TcpListener, TcpStream};
 use std::collections::HashMap;
-use std::io::{Read, Write};
+use tokio::net::{TcpListener, TcpStream};
 
-use packets::MessageSendPacket;
+#[allow(dead_code)]
 
 struct User {
-    username: String,
+    username: Option<String>,
     stream: TcpStream,
 }
 
 impl User {
-
-    fn new(tcp_stream: TcpStream) -> Self {
-        //TODO Read the Username from Stream
-        let username = String::from("bob");
-        User{
-            username,
-            stream: tcp_stream
-        }
-    }
-    
-    fn handle_packets(&mut self, server: &mut Server) {
-        loop {
-            let mut data = [0;4];
-            self.stream.read_exact(&mut data).expect("Error reading packet, server shutting down...");
-            let mut bytes_to_read = vec![0; i32::from_be_bytes(data.clone()) as usize];
-            self.stream.read_exact(&mut bytes_to_read).expect("Error reading packet, server shutting down...");
-            let mut s = String::from_utf8(bytes_to_read).unwrap();
-            let mut packet = MessageSendPacket::from_string(&s).unwrap();
-            server.broadcast_message(packet);
+    fn new(stream: TcpStream) -> Self {
+        User {
+            username: None,
+            stream,
         }
     }
 
+    async fn read_packets(&self) {
+        loop {}
+    }
 }
 
-//SERVER CODE
 struct Server {
-    users: Vec<User>
+    users: HashMap<String, User>,
 }
 
 impl Server {
     fn new() -> Self {
         Server {
-            users: Vec::new()
+            users: HashMap::new(),
         }
-    }
-
-    fn broadcast_message(&mut self, packet: MessageSendPacket){
-        let str = packet.to_string().unwrap();
-        let bytes = str.as_bytes();
-
-        let length = (bytes.len() as i32).clone().to_ne_bytes();
-
-        for mut user in &mut self.users {
-            user.stream.write(&length.clone());
-            user.stream.write(bytes.clone());
-        }
-    }
-
-    fn add_user(&mut self, user: User){
-        self.users.push(user);
     }
 }
 
 #[tokio::main]
-async fn main(){
-    let listener = TcpListener::bind("0.0.0.0:3051").expect("Failure while binding to port 3051");
-
+async fn main() {
+    let listener = TcpListener::bind("0.0.0.0:3030").await.unwrap();
     let mut server = Server::new();
 
-    for stream in listener.incoming() {
-        handle_client(stream.unwrap(), &mut server);
+    loop {
+        let (socket, _) = listener.accept().await.unwrap();
+
+        tokio::spawn(async move {
+            handle_client(socket).await;
+        });
     }
 }
 
-async fn handle_client(stream: TcpStream, server: &mut Server) {
+async fn handle_client(stream: TcpStream) {
     let mut user = User::new(stream);
-    user.handle_packets(server);
-    server.add_user(user);
 }
-
