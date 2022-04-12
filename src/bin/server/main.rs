@@ -1,60 +1,69 @@
-use futures::lock::Mutex;
 use packets::{Connection, MessageSendPacket, Packet, PacketId};
-use std::{collections::HashMap, sync::Arc};
-use tokio::net::{TcpListener, TcpStream};
-
+use tokio::{
+    net::{TcpListener, TcpStream},
+    sync::broadcast::{self, Receiver, Sender},
+};
 struct User {
-    server: Arc<Mutex<Server>>,
-    //username: Option<String>,
     connection: Connection,
 }
 
 impl User {
-    fn new(server: Arc<Mutex<Server>>, stream: TcpStream) -> Self {
+    fn new(stream: TcpStream) -> Self {
         User {
-            server,
-            //       username: None,
             connection: Connection::new(stream),
         }
     }
 
-    async fn read_packets(&mut self) {
+    async fn run(&mut self, tran_recv: (Sender<PacketData>, Receiver<PacketData>)) {
+        let (tx, mut rx) = tran_recv;
         loop {
-            if let Ok((packet_id, data)) = self.connection.read_packet().await {
-                if let Some(i) = PacketId::from_u64(packet_id) {
-                    match i {
-                        PacketId::MessageSend => {
-                            if let Ok(packet) = MessageSendPacket::from_string(&data) {
-                                let mut lock = self.server.lock().await;
-                                lock.broadcast_message(packet).await;
+            tokio::select! {
+                Ok((packet_id, data)) = self.connection.read_packet() => {
+                    if let Some(i) = PacketId::from_u64(packet_id) {
+                        match i {
+                            PacketId::MessageSend => {
+                                tx.send(PacketData::new(i, data)).unwrap();
                             }
                         }
+                    }
+                },
+                Ok(pk_data) = rx.recv() => {
+                    match pk_data.packet_id {
+                        PacketId::MessageSend => {
+                            self.connection.write_packet(MessageSendPacket::from_string(&pk_data.data).unwrap()).await.unwrap();
+                        },
                     }
                 }
             }
         }
     }
-    async fn send_message(&mut self, packet: MessageSendPacket) {
-        self.connection.write_packet(packet).await.unwrap();
-    }
 }
 
-struct Server {
+/*struct Server {
     users: HashMap<u64, User>,
     total_count: u64,
-}
+}*/
 
-impl Server {
+/*impl Server {
     fn new() -> Self {
         Server {
             users: HashMap::new(),
             total_count: 0,
         }
     }
+}*/
 
-    pub async fn broadcast_message(&mut self, data: MessageSendPacket) {
-        for (_, user) in self.users.iter_mut() {
-            user.send_message(data.clone()).await;
+#[derive(Clone, Debug)]
+struct PacketData {
+    packet_id: PacketId,
+    data: String,
+}
+
+impl PacketData {
+    fn new(id: PacketId, data: String) -> Self {
+        PacketData {
+            packet_id: id,
+            data,
         }
     }
 }
@@ -62,23 +71,20 @@ impl Server {
 #[tokio::main]
 async fn main() {
     let listener = TcpListener::bind("0.0.0.0:3030").await.unwrap();
-    let server = Arc::new(Mutex::new(Server::new()));
-
+    //  let server = Arc::new(Mutex::new(Server::new()));
+    let (tx, _rx) = broadcast::channel::<PacketData>(30);
     loop {
         let (socket, _) = listener.accept().await.unwrap();
-        let server_a = Arc::clone(&server);
+        let rx1 = tx.subscribe();
+        let tx1 = tx.clone();
+        //     let server_a = Arc::clone(&server);
         tokio::spawn(async move {
-            handle_client(server_a, socket).await;
+            handle_client(socket, (tx1, rx1)).await;
         });
     }
 }
 
-async fn handle_client(server: Arc<Mutex<Server>>, stream: TcpStream) {
-    let server_2 = Arc::clone(&server);
-    let mut user = User::new(server, stream);
-    user.read_packets().await;
-    let mut underlying = server_2.lock().await;
-    let n = underlying.total_count;
-    underlying.users.insert(n + 1, user);
-    underlying.total_count = underlying.total_count + 1;
+async fn handle_client(stream: TcpStream, tran_recv: (Sender<PacketData>, Receiver<PacketData>)) {
+    let mut user = User::new(stream);
+    user.run(tran_recv).await;
 }
