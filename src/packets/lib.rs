@@ -17,8 +17,7 @@ pub enum Error {
     ReadDataError(ReadDataErrorType),
 }
 
-//TODO Finsih this implemenatation tomorrow morning
-/*impl Debug for Error {
+impl Debug for Error {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         match self {
             Error::SerdeError(serde_error) => {
@@ -27,12 +26,17 @@ pub enum Error {
             Error::PacketError(pk_err) => match pk_err {
                 PacketErrorType::NoneExistantPacketId(id) => {
                     write!(f, "Packet Id {} does not exist", id)
-                },
-                PacketErrorType::&PacketConstructionFail
+                }
+                PacketErrorType::PacketConstructionFail => {
+                    write!(f, "Failed to Construct Packed")
+                }
+            },
+            Error::ReadDataError(rd_err) => match rd_err {
+                ReadDataErrorType::FailedPacketIdRead => write!(f, "Failed to Read Packet Id"),
             },
         }
     }
-}*/
+}
 
 pub enum ReadDataErrorType {
     FailedPacketIdRead,
