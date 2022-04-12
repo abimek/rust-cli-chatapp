@@ -142,10 +142,10 @@ pub trait Packet {
         Self: Sized;
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Clone)]
 pub struct MessageSendPacket {
-    sender: String,
-    message: String,
+    pub sender: String,
+    pub message: String,
 }
 
 impl Packet for MessageSendPacket {

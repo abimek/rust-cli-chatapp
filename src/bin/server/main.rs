@@ -1,15 +1,11 @@
+use futures::lock::Mutex;
 use packets::{Connection, MessageSendPacket, Packet, PacketId};
-use std::{
-    collections::HashMap,
-    sync::{Arc, Mutex},
-};
+use std::{collections::HashMap, sync::Arc};
 use tokio::net::{TcpListener, TcpStream};
-
-#[allow(dead_code)]
 
 struct User {
     server: Arc<Mutex<Server>>,
-    username: Option<String>,
+    //username: Option<String>,
     connection: Connection,
 }
 
@@ -17,7 +13,7 @@ impl User {
     fn new(server: Arc<Mutex<Server>>, stream: TcpStream) -> Self {
         User {
             server,
-            username: None,
+            //       username: None,
             connection: Connection::new(stream),
         }
     }
@@ -29,10 +25,8 @@ impl User {
                     match i {
                         PacketId::MessageSend => {
                             if let Ok(packet) = MessageSendPacket::from_string(&data) {
-                                let lock = self.server.lock();
-                                if let Ok(server) = lock {
-                                    (*server).broadcast_message(packet).await;
-                                }
+                                let mut lock = self.server.lock().await;
+                                lock.broadcast_message(packet).await;
                             }
                         }
                     }
@@ -41,23 +35,28 @@ impl User {
         }
     }
     async fn send_message(&mut self, packet: MessageSendPacket) {
-        //TODO Come Back Here Tomorrow Morning
-        self.connection.write_packet(packet).await.expect("idk");
+        self.connection.write_packet(packet).await.unwrap();
     }
 }
 
 struct Server {
-    users: HashMap<String, User>,
+    users: HashMap<u64, User>,
+    total_count: u64,
 }
 
 impl Server {
     fn new() -> Self {
         Server {
             users: HashMap::new(),
+            total_count: 0,
         }
     }
 
-    pub async fn broadcast_message(&self, data: MessageSendPacket) {}
+    pub async fn broadcast_message(&mut self, data: MessageSendPacket) {
+        for (_, user) in self.users.iter_mut() {
+            user.send_message(data.clone()).await;
+        }
+    }
 }
 
 #[tokio::main]
@@ -75,5 +74,11 @@ async fn main() {
 }
 
 async fn handle_client(server: Arc<Mutex<Server>>, stream: TcpStream) {
+    let server_2 = Arc::clone(&server);
     let mut user = User::new(server, stream);
+    user.read_packets().await;
+    let mut underlying = server_2.lock().await;
+    let n = underlying.total_count;
+    underlying.users.insert(n + 1, user);
+    underlying.total_count = underlying.total_count + 1;
 }
