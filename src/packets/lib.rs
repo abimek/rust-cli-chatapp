@@ -1,3 +1,5 @@
+use std::fmt::Debug;
+
 use serde::{Deserialize, Serialize};
 use tokio::{
     io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader, BufWriter},
@@ -9,18 +11,35 @@ use tokio::{
 
 type Result<T> = std::result::Result<T, Error>;
 
-enum Error {
+pub enum Error {
     SerdeError(serde_json::Error),
     PacketError(PacketErrorType),
     ReadDataError(ReadDataErrorType),
 }
 
-enum ReadDataErrorType {
+//TODO Finsih this implemenatation tomorrow morning
+/*impl Debug for Error {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        match self {
+            Error::SerdeError(serde_error) => {
+                write!(f, "Serde: {}", serde_error)
+            }
+            Error::PacketError(pk_err) => match pk_err {
+                PacketErrorType::NoneExistantPacketId(id) => {
+                    write!(f, "Packet Id {} does not exist", id)
+                },
+                PacketErrorType::&PacketConstructionFail
+            },
+        }
+    }
+}*/
+
+pub enum ReadDataErrorType {
     FailedPacketIdRead,
 }
 
-enum PacketErrorType {
-    NoneExistantPacketId,
+pub enum PacketErrorType {
+    NoneExistantPacketId(u64),
     PacketConstructionFail,
 }
 
@@ -31,13 +50,13 @@ pub struct Connection {
 
 impl Connection {
     pub fn new(stream: TcpStream) -> Self {
-        let (mut read, mut write) = stream.into_split();
+        let (read, write) = stream.into_split();
         Connection {
             writer: BufWriter::new(write),
             reader: BufReader::new(read),
         }
     }
-    async fn write_packet<T: Packet>(&mut self, packet: T) -> Result<()> {
+    pub async fn write_packet<T: Packet>(&mut self, packet: T) -> Result<()> {
         match packet.to_string() {
             Ok(mut packet_data) => {
                 let packet_id = packet.get_identifier();
@@ -47,34 +66,35 @@ impl Connection {
                     self.writer.write_all(&id.to_ne_bytes()).await.unwrap();
                     self.writer.write_all(bytes).await.unwrap();
                     self.writer.flush().await.unwrap();
-                    ()
+                    Ok(())
+                } else {
+                    //TODO This error needs to be handled better like, seriously, A new error type
+                    //is needed for this, should not be NoneExistantpacketId
+                    Err(Error::PacketError(PacketErrorType::NoneExistantPacketId(
+                        30,
+                    )))
                 }
-                Err(Error::PacketError(PacketErrorType::NoneExistantPacketId))
             }
             Err(e) => Err(Error::SerdeError(e)),
         }
     }
 
-    async fn read_packet(&mut self) -> Result<Box<dyn Packet>> {
+    pub async fn read_packet(&mut self) -> Result<(u64, String)> {
         match self.reader.read_u64().await {
             Ok(id) => match PacketId::from_u64(id) {
-                Some(packet) => {
+                Some(_) => {
                     let mut data = String::new();
                     self.reader.read_line(&mut data).await.unwrap();
-                    match packet {
-                        PacketId::MessageSend => {
-                            if let Ok(pk) = MessageSendPacket::from_string(&data) {
-                                return Ok(Box::new(pk));
-                            }
-                            return Err(Error::PacketError(
-                                PacketErrorType::PacketConstructionFail,
-                            ));
-                        }
-                    }
+                    data.pop();
+                    Ok((id, data))
                 }
-                None => return Err(Error::PacketError(PacketErrorType::NoneExistantPacketId)),
+                None => {
+                    return Err(Error::PacketError(PacketErrorType::NoneExistantPacketId(
+                        id,
+                    )))
+                }
             },
-            std::result::Result::Err(n) => {
+            std::result::Result::Err(_) => {
                 return Err(Error::ReadDataError(ReadDataErrorType::FailedPacketIdRead));
             }
         }
