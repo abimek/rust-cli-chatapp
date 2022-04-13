@@ -104,7 +104,7 @@ impl Connection {
         }
     }
 }
-
+#[derive(Clone, Debug)]
 pub enum PacketId {
     MessageSend,
 }
@@ -146,6 +146,15 @@ pub trait Packet {
 pub struct MessageSendPacket {
     pub sender: String,
     pub message: String,
+}
+
+impl MessageSendPacket {
+    pub fn new(username: String, message: String) -> Self {
+        MessageSendPacket {
+            sender: username,
+            message,
+        }
+    }
 }
 
 impl Packet for MessageSendPacket {

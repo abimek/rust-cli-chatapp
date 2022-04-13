@@ -70,11 +70,13 @@ impl PacketData {
 
 #[tokio::main]
 async fn main() {
-    let listener = TcpListener::bind("0.0.0.0:3030").await.unwrap();
+    let listener = TcpListener::bind("127.0.0.1:5030").await.unwrap();
     //  let server = Arc::new(Mutex::new(Server::new()));
     let (tx, _rx) = broadcast::channel::<PacketData>(30);
+    println!("Server Started!");
     loop {
         let (socket, _) = listener.accept().await.unwrap();
+        println!("new Connection");
         let rx1 = tx.subscribe();
         let tx1 = tx.clone();
         //     let server_a = Arc::clone(&server);
