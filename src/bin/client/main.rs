@@ -1,5 +1,6 @@
-use std::io::stdin;
+use std::io::{stdin, stdout, Write};
 
+use async_std::io::WriteExt;
 use packets::{Connection, MessageSendPacket, Packet, PacketId};
 use tokio::net::TcpStream;
 
@@ -12,10 +13,9 @@ impl User {
     async fn run(&mut self) {
         println!("Write Something");
         loop {
+            let mut line = String::new();
+            let std = async_std::io::stdin();
             tokio::select! {
-                line = User::read_line() => {
-                    self.connection.write_packet(MessageSendPacket::new(self.username.clone(), line)).await.unwrap();
-                },
                 Ok((pk_id, pk_data)) = self.connection.read_packet() => {
                     if let Some(id) = PacketId::from_u64(pk_id) {
                         match id {
@@ -24,26 +24,17 @@ impl User {
                                     //TEMPROARY FIX OF PRITNING TO SELF UNTIL I CAN GET A LOGIN
                                     //SEQUENCE OPPERTIONAL
                                     if pk.sender != self.username {
-                                        println!("{}: {}", pk.sender, pk.message);
+                                        stdout().flush().unwrap();
+                                        async_std::io::stdout().write_all(format!("{}: {}", pk.sender, pk.message).as_bytes());
                                     }
                                 }
                             }
                         }
                     }
-                }
-            }
-        }
-    }
-
-    async fn read_line() -> String {
-        loop {
-            let mut data = String::new();
-            stdin()
-                .read_line(&mut data)
-                .expect("Error while reading data from terminal");
-            data.pop();
-            if !data.contains("\n") | data.eq("") {
-                return data;
+                },
+                Ok(_) = std.read_line(&mut line) => {
+                    self.connection.write_packet(MessageSendPacket::new(self.username.clone(), line)).await.unwrap();
+                },
             }
         }
     }
@@ -57,12 +48,6 @@ async fn main() {
         .read_line(&mut username)
         .expect("error while readig line");
     username.pop();
-    let mut address: String = String::new();
-    println!("Please input a server address in the format <ip>:<port>");
-    stdin()
-        .read_line(&mut address)
-        .expect("error while reading ip");
-
     let stream = TcpStream::connect("127.0.0.1:5030").await.unwrap();
 
     let mut user = User {

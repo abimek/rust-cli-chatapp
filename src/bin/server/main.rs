@@ -19,6 +19,7 @@ impl User {
         loop {
             tokio::select! {
                 Ok((packet_id, data)) = self.connection.read_packet() => {
+                    println!("Reading");
                     if let Some(i) = PacketId::from_u64(packet_id) {
                         match i {
                             PacketId::MessageSend => {
@@ -30,7 +31,9 @@ impl User {
                 Ok(pk_data) = rx.recv() => {
                     match pk_data.packet_id {
                         PacketId::MessageSend => {
-                            self.connection.write_packet(MessageSendPacket::from_string(&pk_data.data).unwrap()).await.unwrap();
+                            let pk = MessageSendPacket::from_string(&pk_data.data).unwrap();
+                            println!("Writing: {}: {}", pk.sender, pk.message);
+                            self.connection.write_packet(pk).await.unwrap();
                         },
                     }
                 }
@@ -38,20 +41,6 @@ impl User {
         }
     }
 }
-
-/*struct Server {
-    users: HashMap<u64, User>,
-    total_count: u64,
-}*/
-
-/*impl Server {
-    fn new() -> Self {
-        Server {
-            users: HashMap::new(),
-            total_count: 0,
-        }
-    }
-}*/
 
 #[derive(Clone, Debug)]
 struct PacketData {
@@ -71,7 +60,6 @@ impl PacketData {
 #[tokio::main]
 async fn main() {
     let listener = TcpListener::bind("127.0.0.1:5030").await.unwrap();
-    //  let server = Arc::new(Mutex::new(Server::new()));
     let (tx, _rx) = broadcast::channel::<PacketData>(30);
     println!("Server Started!");
     loop {
@@ -79,7 +67,6 @@ async fn main() {
         println!("new Connection");
         let rx1 = tx.subscribe();
         let tx1 = tx.clone();
-        //     let server_a = Arc::clone(&server);
         tokio::spawn(async move {
             handle_client(socket, (tx1, rx1)).await;
         });
